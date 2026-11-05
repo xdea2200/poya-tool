@@ -208,11 +208,11 @@ textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:
     <div class="sect">
       <h2>💾 備份 / 還原</h2>
       <div class="row">
-        <button class="btn" id="bk-export">下載完整備份</button>
-        <button class="btn" id="bk-import">從備份還原</button><input type="file" id="bk-file" hidden>
+        <button class="btn" id="bk-export">下載加密資料包</button>
+        <button class="btn" id="bk-import">匯入資料包</button><input type="file" id="bk-file" hidden>
         <button class="btn danger" id="bk-reset">重置為內建資料</button>
       </div>
-      <p class="line">資料只存在這台裝置的瀏覽器裡，不會上傳。換電腦或手機時，用備份檔搬過去。</p>
+      <p class="line">資料只存在這台裝置的瀏覽器裡，不會上傳。換電腦或手機時，用加密資料包搬過去（需要密碼才能匯入，檔案本身打不開）。</p>
     </div>
   </section>
 </main>
@@ -367,7 +367,7 @@ const shown={m:0,p:0,c:0};let last={m:[],p:[],c:[]};
 function curPromoPeriod(){return PROMOS.length?String(PROMOS[0].period):null}
 function searchM(reset=true){
   const toks=tokens($('#q-m').value),d=$('#f-m-dept').value,c=$('#f-m-code').value,onlyP=$('#f-m-promo').checked;
-  if(!M.length){$('#res-m').innerHTML=emptyBox('還沒有底稿資料','到「設定」匯入底稿 Excel，或用「從備份還原」載入資料包');$('#meta-m').textContent='';return}
+  if(!M.length){$('#res-m').innerHTML=emptyBox('還沒有底稿資料','到「設定」匯入底稿 Excel，或用「匯入資料包」載入');$('#meta-m').textContent='';return}
   if(!toks.length&&!d&&!c&&!onlyP){last.m=[];$('#meta-m').textContent=`共 ${M.length.toLocaleString()} 筆商品，輸入關鍵字開始查詢`;$('#res-m').innerHTML=emptyBox('輸入任何內容就能查','品名、店內碼、國碼、部門、小分類號碼或名稱、廠編都可以');return}
   const cp=curPromoPeriod();
   let r=M.filter(o=>(!d||o.dept===d)&&(!c||o.st===c)&&(!onlyP||(promoByCode.get(o.code)||[]).some(p=>p['檔期']===cp))&&match(o.h,toks));
@@ -409,7 +409,7 @@ function pTypeOk(o,t){switch(t){
 function hasDeal(o){return (num(o['特價'])||0)>0||!!o.deal||(num(o['滿額價'])||0)>0||(num(o['現折金額'])||0)>0||(num(o['會員獨享'])||0)>0||(num(o['印花價'])||0)>0||!!o.gift}
 function searchP(reset=true){
   const toks=tokens($('#q-p').value),per=$('#f-p-per').value,d=$('#f-p-dept').value,t=$('#f-p-type').value;
-  if(!P.length){$('#res-p').innerHTML=emptyBox('還沒有手稿資料','到「設定」匯入手稿 Excel，或用「從備份還原」載入資料包');$('#meta-p').textContent='';return}
+  if(!P.length){$('#res-p').innerHTML=emptyBox('還沒有手稿資料','到「設定」匯入手稿 Excel，或用「匯入資料包」載入');$('#meta-p').textContent='';return}
   const base=P.filter(o=>per==='all'||o['檔期']===per);
   if(!toks.length&&!d&&!t){last.p=[];$('#meta-p').textContent=`${per==='all'?'全部檔期':per+' 檔'} 共 ${base.length.toLocaleString()} 筆，輸入關鍵字開始查詢`;$('#res-p').innerHTML=emptyBox('輸入任何內容就能查','品名、條碼、特賣原因、贈品名稱、價格數字（例如 299）、行銷活動都可以');return}
   let r=base.filter(o=>(!d||o['部門']===d)&&pTypeOk(o,t)&&(S.pzero!=='hide'||hasDeal(o))&&match(o.h,toks));
@@ -459,7 +459,7 @@ function renderP(toks){
 }
 function searchC(reset=true){
   const toks=tokens($('#q-c').value),d=$('#f-c-dept').value,has=$('#f-c-has').checked;
-  if(!C.length){$('#res-c').innerHTML=emptyBox('還沒有小分類資料','到「設定」匯入小分類 Excel，或用「從備份還原」載入資料包');$('#meta-c').textContent='';return}
+  if(!C.length){$('#res-c').innerHTML=emptyBox('還沒有小分類資料','到「設定」匯入小分類 Excel，或用「匯入資料包」載入');$('#meta-c').textContent='';return}
   let r=C.filter(o=>(!d||o.dept===d)&&(!has||catCount.get(o.sub))&&match(norm([o.dept,o.deptN,o.mid,o.midN,o.sub,o.subN].join('\u0001')),toks));
   if(toks.length){const q=toks.join(' ');r=r.map((o,i)=>[norm(o.sub)===q?0:(norm(o.sub).startsWith(q)?1:2),i,o]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]).map(x=>x[2])}
   last.c=r;if(reset)shown.c=0;
@@ -636,11 +636,30 @@ function applyS(){document.documentElement.style.setProperty('--fs',S.fs+'px')}
 // backup
 async function gz(str){const cs=new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'));return await new Response(cs).blob()}
 async function gunzipText(blobOrBuf){const ds=new Blob([blobOrBuf]).stream().pipeThrough(new DecompressionStream('gzip'));return await new Response(ds).text()}
-$('#bk-export').onclick=async()=>{toast('正在打包備份…');const b=await gz(JSON.stringify({v:1,settings:S,master:MASTER,promos:PROMOS,cats:CATS}));
-  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`商品查詢備份_${new Date().toISOString().slice(0,10)}.json.gz`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)};
+// encrypted pack: "POYAENC1" + salt(16) + iv(12) + AES-256-GCM(gzip(json)), key = PBKDF2-SHA256(password, salt, 250000)
+const ENC_MAGIC=new TextEncoder().encode('POYAENC1');
+async function deriveKey(pw,salt){const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:250000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])}
+async function encryptPack(bytes,pw){const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},await deriveKey(pw,salt),bytes));return new Blob([ENC_MAGIC,salt,iv,ct])}
+function isEnc(u){return u.length>36&&ENC_MAGIC.every((b,i)=>u[i]===b)}
+async function decryptPack(u,pw){const salt=u.slice(8,24),iv=u.slice(24,36),ct=u.slice(36);
+  return new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv},await deriveKey(pw,salt),ct))}
+$('#bk-export').onclick=async()=>{
+  const pw=prompt('設定資料包密碼（匯入時要輸入，至少 4 個字）');if(pw==null)return;
+  if(pw.length<4){toast('密碼至少 4 個字');return}
+  if(prompt('再輸入一次密碼確認')!==pw){toast('兩次密碼不一樣，已取消');return}
+  toast('正在加密打包…');
+  const g=new Uint8Array(await (await gz(JSON.stringify({v:1,settings:S,master:MASTER,promos:PROMOS,cats:CATS}))).arrayBuffer());
+  const b=await encryptPack(g,pw);
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`商品查詢資料包_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.poya`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);toast('已下載加密資料包')};
 $('#bk-import').onclick=()=>$('#bk-file').click();
-$('#bk-file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;if(!confirm('用備份檔取代目前所有資料與設定？'))return;
-  try{const buf=await f.arrayBuffer();const u=new Uint8Array(buf);const txt=(u[0]===0x1f&&u[1]===0x8b)?await gunzipText(buf):new TextDecoder().decode(u);
+$('#bk-file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{const buf=await f.arrayBuffer();let u=new Uint8Array(buf);
+    if(isEnc(u)){const pw=prompt('請輸入資料包密碼');if(pw==null)return;
+      try{u=await decryptPack(u,pw)}catch(_){toast('密碼錯誤，無法開啟資料包',3500);return}}
+    if(!confirm('用這個資料包取代目前所有資料與設定？'))return;
+    const txt=(u[0]===0x1f&&u[1]===0x8b)?await gunzipText(u):new TextDecoder().decode(u);
     const d=JSON.parse(txt);await DB.clear();S={...S,...d.settings};MASTER=d.master;CATS=d.cats;PROMOS=d.promos||[];TRASH=[];
     await saveS();if(MASTER)await DB.set('master',MASTER);if(CATS)await DB.set('cats',CATS);for(const p of PROMOS)await DB.set('promo:'+p.period,p);await DB.set('inited',1);
     applyS();rebuild();renderSettings();toast('還原完成')}catch(err){toast('備份檔讀取失敗：'+err.message,4000)}};
