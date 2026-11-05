@@ -645,6 +645,21 @@ async function encryptPack(bytes,pw){const salt=crypto.getRandomValues(new Uint8
 function isEnc(u){return u.length>36&&ENC_MAGIC.every((b,i)=>u[i]===b)}
 async function decryptPack(u,pw){const salt=u.slice(8,24),iv=u.slice(24,36),ct=u.slice(36);
   return new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv},await deriveKey(pw,salt),ct))}
+// LINE 等 App 可能把資料包包成 .zip：直接從 zip 裡取出資料包，不用先解壓縮
+async function unzipPack(u){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength);let e=-1;
+  for(let i=u.length-22;i>=Math.max(0,u.length-65558);i--)if(dv.getUint32(i,true)===0x06054b50){e=i;break}
+  if(e<0)return null;
+  const n=dv.getUint16(e+10,true);let p=dv.getUint32(e+16,true);const cands=[];
+  for(let k=0;k<n&&dv.getUint32(p,true)===0x02014b50;k++){
+    const method=dv.getUint16(p+10,true),csize=dv.getUint32(p+20,true),nl=dv.getUint16(p+28,true),xl=dv.getUint16(p+30,true),cl=dv.getUint16(p+32,true),off=dv.getUint32(p+42,true);
+    const name=new TextDecoder().decode(u.subarray(p+46,p+46+nl));p+=46+nl+xl+cl;
+    if(name.endsWith('/')||/(^|\/)(__MACOSX|\.)/.test(name)||!csize)continue;cands.push({method,csize,off,name})}
+  cands.sort((a,b)=>(/\.(poya|gz|json)$/i.test(b.name)?1:0)-(/\.(poya|gz|json)$/i.test(a.name)?1:0)||b.csize-a.csize);
+  for(const c of cands){const ds=c.off+30+dv.getUint16(c.off+26,true)+dv.getUint16(c.off+28,true);const raw=u.subarray(ds,ds+c.csize);
+    let out;if(c.method===0)out=raw.slice();else if(c.method===8){const s=new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));out=new Uint8Array(await new Response(s).arrayBuffer())}else continue;
+    if(isEnc(out)||(out[0]===0x1f&&out[1]===0x8b)||out[0]===0x7b)return out}
+  return null}
 $('#bk-export').onclick=async()=>{
   const pw=prompt('設定資料包密碼（匯入時要輸入，至少 4 個字）');if(pw==null)return;
   if(pw.length<4){toast('密碼至少 4 個字');return}
@@ -656,6 +671,7 @@ $('#bk-export').onclick=async()=>{
 $('#bk-import').onclick=()=>$('#bk-file').click();
 $('#bk-file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
   try{const buf=await f.arrayBuffer();let u=new Uint8Array(buf);
+    if(u[0]===0x50&&u[1]===0x4b){const x=await unzipPack(u);if(!x){toast('壓縮檔裡找不到資料包',3500);return}u=x}
     if(isEnc(u)){const pw=prompt('請輸入資料包密碼');if(pw==null)return;
       try{u=await decryptPack(u,pw)}catch(_){toast('密碼錯誤，無法開啟資料包',3500);return}}
     if(!confirm('用這個資料包取代目前所有資料與設定？'))return;
