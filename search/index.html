@@ -195,10 +195,10 @@ textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:
     </div>
     <div class="sect">
       <h2>🏷️ 手稿顯示</h2>
-      <div class="row"><label>顯示方式</label><select id="s-pview"><option value="card">卡片</option><option value="table">表格</option></select></div>
+      <div class="row"><label>顯示方式</label><select id="s-pview"><option value="table">表格</option><option value="card">卡片</option></select></div>
       <div class="row"><label>預設檔期</label><select id="s-pper"><option value="latest">最新檔期</option><option value="all">全部檔期</option></select></div>
       <div class="row"><label>特價＝0 的列</label><select id="s-pzero"><option value="show">顯示</option><option value="hide">隱藏（沒有特價也沒組合／滿額優惠的列）</option></select></div>
-      <div class="row"><label>顯示銷量／庫存</label><select id="s-psales"><option value="1">顯示</option><option value="0">不顯示</option></select></div>
+      <div class="row"><label>顯示銷量／庫存</label><select id="s-psales"><option value="0">不顯示</option><option value="1">顯示</option></select></div>
     </div>
     <div class="sect">
       <h2>🔢 商品狀態 CODE 說明</h2>
@@ -275,7 +275,7 @@ const DB={db:null,
 // ---------- settings ----------
 const DEFAULT_CODES={'1':'正常品','2':'廠商缺貨','3':'季節品','4':'下架商品','5':'試用品/試聞包/氫氣物','6':'統倉採購商品','7':'斷貨商品','8':'問題商品','9':'預計停售','0':'停止銷售商品','A':'管理統控商品'};
 const M_COLS=[['部門','部門'],['小分類','小分類'],['店內碼','店內碼'],['國碼','國碼'],['品名','品名'],['廠商','廠商'],['CODE','CODE'],['檔期','目前檔期優惠']];
-let S={mode:'and',live:'1',page:100,fs:15,start:'m',mcols:['部門','小分類','店內碼','國碼','品名','廠商','CODE','檔期'],pview:'card',pper:'latest',pzero:'show',psales:'1',codes:DEFAULT_CODES};
+let S={mode:'and',live:'1',page:100,fs:15,start:'m',mcols:['部門','小分類','店內碼','國碼','品名','廠商','CODE','檔期'],pview:'table',pper:'latest',pzero:'show',psales:'0',codes:DEFAULT_CODES};
 async function saveS(){await DB.set('settings',S)}
 
 // ---------- data state ----------
