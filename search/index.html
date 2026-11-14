@@ -127,6 +127,7 @@ textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:
 <body>
 <div id="loading"><div class="spin"></div><div id="loadmsg">載入資料中…</div></div>
 <header>
+  <div id="dirty" style="display:none;background:#ffb300;color:#1d2129;margin:0 -14px 8px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer" onclick="go('s')">⚠️ 資料已變更但還沒存檔 → 到「設定」按「💾 儲存資料檔」</div>
   <div class="brand"><h1>寶雅POYA · 商品查詢</h1><small id="hdrinfo"></small></div>
   <nav>
     <button data-p="m" class="on">底稿查詢</button>
@@ -179,7 +180,7 @@ textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:
       <h3>底稿</h3><div class="list" id="ls-m"></div>
       <h3>手稿檔期</h3><div class="list" id="ls-p"></div>
       <h3>小分類表</h3><div class="list" id="ls-c"></div>
-      <h3>回收區（刪除的資料保留 3 天後自動清除）</h3><div class="list" id="ls-t"></div>
+      <div id="ls-t" hidden></div>
     </div>
     <div class="sect">
       <h2>🔎 搜尋</h2>
@@ -207,13 +208,28 @@ textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:
       <div class="row"><button class="btn pri" id="s-codes-save">儲存 CODE 說明</button></div>
     </div>
     <div class="sect">
+      <h2>✍️ 直接覆寫資料檔</h2>
+      <p class="line">設定好之後，「儲存資料檔」和「更改密碼」會直接改寫 poya-data.js，不用再下載、覆蓋。兩種都沒設定時才會改成下載。</p>
+      <h3>電腦（Chrome / Edge）：資料夾裡的 poya-data.js</h3>
+      <div class="row"><button class="btn" id="fs-link">📁 選擇資料夾裡的 poya-data.js</button><button class="btn" id="fs-unlink">取消連結</button><span class="line" id="fs-status"></span></div>
+      <h3>GitHub：網址版（iPhone 用的）search/poya-data.js</h3>
+      <div class="row"><label>帳號 / 倉庫</label><input id="gh-owner" style="width:130px" placeholder="xdea2200"> / <input id="gh-repo" style="width:130px" placeholder="poya-tool"></div>
+      <div class="row"><label>分支 / 檔案路徑</label><input id="gh-branch" style="width:90px" placeholder="main"> <input id="gh-path" style="width:220px" placeholder="search/poya-data.js"></div>
+      <div class="row"><label>存取權杖（token）</label><input id="gh-token" type="password" style="width:260px" placeholder="github_pat_…" autocomplete="off"></div>
+      <div class="row"><button class="btn pri" id="gh-save">儲存 GitHub 設定</button><button class="btn" id="gh-test">測試連線</button><button class="btn" id="gh-clear">清除</button><span class="line" id="gh-status"></span></div>
+      <p class="line">權杖只存在這台裝置上。申請方式：GitHub → Settings → Developer settings → Fine-grained tokens → 只勾選 poya-tool 這個倉庫、Contents 設為 Read and write。</p>
+    </div>
+    <div class="sect">
       <h2>💾 備份 / 還原</h2>
       <div class="row">
-        <button class="btn" id="bk-export">下載加密資料包</button>
+        <button class="btn pri" id="df-export">💾 儲存資料檔（poya-data.js）</button>
+        <button class="btn" id="bk-export">下載加密資料包（.poya）</button>
         <button class="btn" id="bk-import">匯入資料包</button><input type="file" id="bk-file" hidden>
-        <button class="btn danger" id="bk-reset">重置為內建資料</button>
+        <button class="btn" id="pw-lock">🔒 上鎖</button>
+        <button class="btn" id="pw-change">🔑 更改密碼</button>
+        <button class="btn" id="pw-forget">忘記此裝置記住的密碼</button>
       </div>
-      <p class="line">資料只存在這台裝置的瀏覽器裡，不會上傳。換電腦或手機時，用加密資料包搬過去（需要密碼才能匯入，檔案本身打不開）。</p>
+      <p class="line">資料庫是跟網頁放在同一個資料夾的 <b>poya-data.js</b>，不存在瀏覽器裡。目前狀態：<b id="lock-status"></b>。上鎖後資料檔會加密，打開網頁要輸入密碼；沒上鎖時不用密碼，但拿到檔案的人都能讀到資料。匯入新的手稿／底稿／小分類後，按「💾 儲存資料檔」。有設定「直接覆寫」就會直接改寫 poya-data.js；沒設定就會下載新檔，要自己覆蓋。</p>
     </div>
   </section>
 </main>
@@ -263,20 +279,16 @@ function toast(m,ms=2200){const t=$('#toast');t.textContent=m;t.classList.add('o
 function setLoad(m){$('#loadmsg').textContent=m}
 
 // ---------- IndexedDB ----------
-const DB={db:null,
-  open(){return new Promise((ok,no)=>{const r=indexedDB.open('poya-search',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>{this.db=r.result;ok()};r.onerror=()=>no(r.error)})},
-  get(k){return new Promise((ok,no)=>{const r=this.db.transaction('kv').objectStore('kv').get(k);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})},
-  set(k,v){return new Promise((ok,no)=>{const t=this.db.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=()=>ok();t.onerror=()=>no(t.error)})},
-  del(k){return new Promise((ok,no)=>{const t=this.db.transaction('kv','readwrite');t.objectStore('kv').delete(k);t.oncomplete=()=>ok();t.onerror=()=>no(t.error)})},
-  keys(){return new Promise((ok,no)=>{const r=this.db.transaction('kv').objectStore('kv').getAllKeys();r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})},
-  clear(){return new Promise((ok,no)=>{const t=this.db.transaction('kv','readwrite');t.objectStore('kv').clear();t.oncomplete=()=>ok();t.onerror=()=>no(t.error)})}
-};
+// 資料不存瀏覽器：資料庫一律從同資料夾的 poya-data.js 讀取。這裡只標記「已變更、尚未匯出」。
+const DB={open:async()=>{},get:async()=>undefined,set:async(k)=>{if(k!=='trash'&&k!=='inited')markDirty()},del:async()=>markDirty(),keys:async()=>[],clear:async()=>{}};
+let DIRTY=false,DATA_PW=null,LOCKED=false,PWH=null;
+function markDirty(){DIRTY=true;const b=$('#dirty');if(b)b.style.display='block'}
 
 // ---------- settings ----------
 const DEFAULT_CODES={'1':'正常品','2':'廠商缺貨','3':'季節品','4':'下架商品','5':'試用品/試聞包/氫氣物','6':'統倉採購商品','7':'斷貨商品','8':'問題商品','9':'預計停售','0':'停止銷售商品','A':'管理統控商品'};
 const M_COLS=[['部門','部門'],['小分類','小分類'],['店內碼','店內碼'],['國碼','國碼'],['品名','品名'],['廠商','廠商'],['CODE','CODE'],['檔期','目前檔期優惠']];
 let S={mode:'and',live:'1',page:100,fs:15,start:'m',mcols:['部門','小分類','店內碼','國碼','品名','廠商','CODE','檔期'],pview:'table',pper:'latest',pzero:'show',psales:'0',codes:DEFAULT_CODES};
-async function saveS(){await DB.set('settings',S)}
+async function saveS(){try{localStorage.setItem('poya-settings',JSON.stringify(S))}catch(_){}}
 
 // ---------- data state ----------
 let MASTER=null;   // {cols,rows,name,at}
@@ -573,7 +585,7 @@ async function importFiles(files){
       const body=sh.rows.slice(d.hi+1).filter(r=>r&&r.some(v=>v!=null));
       if(d.type==='m'){const hh=d.h.map(x=>ALIAS[x]||x);const keep=MASTER_KEEP.filter(c=>hh.includes(c));const ix=keep.map(c=>hh.indexOf(c));
         const rows=body.map(r=>ix.map(i=>r[i]??null)).filter(r=>r[keep.indexOf('店內碼')]);
-        if(MASTER&&!confirm(`要用「${f.name}」（${rows.length.toLocaleString()} 筆）取代目前的底稿嗎？\n舊底稿會放進回收區保留 3 天。`))continue;
+        if(MASTER&&!confirm(`要用「${f.name}」（${rows.length.toLocaleString()} 筆）取代目前的底稿嗎？`))continue;
         if(MASTER)await toTrash('m',`底稿 ${MASTER.name}`,'master',MASTER);
         MASTER={cols:keep,rows,name:f.name,at:Date.now()};await DB.set('master',MASTER);changed=true;toast(`底稿已更新：${rows.length.toLocaleString()} 筆`)}
       else if(d.type==='c'){const rows=body;
@@ -594,8 +606,8 @@ async function importFiles(files){
   if(changed){rebuild();renderSettings()}
 }
 function guessPeriod(n){const m=String(n).match(/20\d{4}/);return m?m[0]:'未命名'}
-async function toTrash(kind,label,key,data){TRASH.push({kind,label,key,data,at:Date.now()});await DB.set('trash',TRASH)}
-async function purgeTrash(){const before=TRASH.length;TRASH=TRASH.filter(t=>Date.now()-t.at<3*DAY);if(TRASH.length!==before)await DB.set('trash',TRASH)}
+async function toTrash(){}
+async function purgeTrash(){}
 
 // ---------- settings page ----------
 function fmtAt(t){if(!t)return'內建資料';const d=new Date(t);return`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')} 匯入`}
@@ -604,6 +616,7 @@ function renderSettings(){
   $('#ls-c').innerHTML=CATS?`<div class="it"><div class="nm">${esc(CATS.name)}<small>${CATS.rows.length.toLocaleString()} 筆 · ${fmtAt(CATS.at)}</small></div><button class="btn sm" data-act="repl">更換</button></div>`:'<div class="it"><div class="nm">尚未匯入</div></div>';
   $('#ls-p').innerHTML=PROMOS.length?PROMOS.map(p=>`<div class="it"><div class="nm"><b>${esc(p.period)} 檔</b> · ${esc(p.name)}<small>${p.rows.length.toLocaleString()} 筆 · ${fmtAt(p.at)}</small></div><button class="btn sm danger" data-delp="${esc(p.period)}">刪除</button></div>`).join(''):'<div class="it"><div class="nm">尚未匯入任何檔期</div></div>';
   $('#ls-t').innerHTML=TRASH.length?TRASH.map((t,i)=>{const left=Math.max(0,Math.ceil((t.at+3*DAY-Date.now())/36e5));return`<div class="it"><div class="nm">${esc(t.label)}<small>${left} 小時後自動清除</small></div><button class="btn sm" data-restore="${i}">還原</button></div>`}).join(''):'<div class="it"><div class="nm"><small>回收區是空的</small></div></div>';
+  fsStatus();ghStatus();lockStatus();
   $('#s-mode').value=S.mode;$('#s-live').value=S.live;$('#s-page').value=String(S.page);$('#s-fs').value=String(S.fs);$('#s-start').value=S.start;
   $('#s-pview').value=S.pview;$('#s-pper').value=S.pper;$('#s-pzero').value=S.pzero;$('#s-psales').value=S.psales;
   $('#s-mcols').innerHTML=M_COLS.map(([k,l])=>`<label><input type="checkbox" value="${k}" ${S.mcols.includes(k)?'checked':''}>${l}</label>`).join('');
@@ -612,8 +625,8 @@ function renderSettings(){
 $('#pg-s').addEventListener('click',async e=>{
   const t=e.target.closest('[data-act],[data-delp],[data-restore]');if(!t)return;
   if(t.dataset.act==='repl'){$('#file').click();return}
-  if(t.dataset.delp){const per=t.dataset.delp,ex=PROMOS.find(p=>String(p.period)===per);if(!ex||!confirm(`刪除 ${per} 檔？（會放進回收區保留 3 天）`))return;
-    await toTrash('p',`${per} 檔 ${ex.name}`,'promo:'+per,ex);PROMOS=PROMOS.filter(p=>p!==ex);await DB.del('promo:'+per);rebuild();renderSettings();toast(`${per} 檔已移到回收區`);return}
+  if(t.dataset.delp){const per=t.dataset.delp,ex=PROMOS.find(p=>String(p.period)===per);if(!ex||!confirm(`刪除 ${per} 檔？`))return;
+    await toTrash('p',`${per} 檔 ${ex.name}`,'promo:'+per,ex);PROMOS=PROMOS.filter(p=>p!==ex);await DB.del('promo:'+per);rebuild();renderSettings();toast(`${per} 檔已刪除（記得匯出資料檔）`);return}
   if(t.dataset.restore!=null){const i=+t.dataset.restore,it=TRASH[i];if(!it)return;
     if(it.kind==='p'){const per=String(it.data.period);if(PROMOS.some(p=>String(p.period)===per)&&!confirm(`${per} 檔目前已有資料，要用回收區的版本取代嗎？`))return;
       const ex=PROMOS.find(p=>String(p.period)===per);if(ex){await toTrash('p',`${per} 檔 ${ex.name}`,'promo:'+per,ex);PROMOS=PROMOS.filter(p=>p!==ex)}
@@ -672,6 +685,83 @@ $('#bk-export').onclick=async()=>{
   const g=new Uint8Array(await (await gz(JSON.stringify({v:1,settings:S,master:MASTER,promos:PROMOS,cats:CATS}))).arrayBuffer());
   const b=await encryptPack(g,pw);
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`商品查詢資料包_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.poya`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);toast('已下載加密資料包')};
+function b64(u){let s='';for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)}
+function unb64(t){const bin=atob(t),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u}
+$('#df-export').onclick=async()=>{await fsPerm();await exportDataFile()};
+// 密碼只存「雜湊」在資料檔裡（pwh），不存明碼；上鎖時才用密碼把資料加密
+async function pwHash(pw,salt){const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveBits']);
+  return b64(new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',salt,iterations:250000,hash:'SHA-256'},base,256)))}
+async function makePwh(pw){const salt=crypto.getRandomValues(new Uint8Array(16));return {salt:b64(salt),hash:await pwHash(pw,salt)}}
+async function verifyPw(pw){if(LOCKED&&DATA_PW!=null)return pw===DATA_PW;if(PWH)return (await pwHash(pw,unb64(PWH.salt)))===PWH.hash;return true}
+function lockStatus(){const t=$('#lock-status');if(t)t.textContent=LOCKED?'🔒 已上鎖（加密）':'🔓 未上鎖';const b=$('#pw-lock');if(b)b.textContent=LOCKED?'🔓 解除上鎖':'🔒 上鎖'}
+async function exportDataFile(){
+  toast(LOCKED?'正在加密產生資料檔…':'正在產生資料檔…',8000);
+  let u=new Uint8Array(await (await gz(JSON.stringify({v:1,master:MASTER,promos:PROMOS,cats:CATS}))).arrayBuffer());
+  if(LOCKED)u=new Uint8Array(await (await encryptPack(u,DATA_PW)).arrayBuffer());
+  const js='/* 寶雅POYA 商品查詢資料檔（'+(LOCKED?'已上鎖・AES 加密':'未上鎖')+'）'+new Date().toISOString().slice(0,10)+' */\nwindow.POYA_DATA='+JSON.stringify({v:1,enc:LOCKED,pwh:PWH,b64:b64(u)})+';\n';
+  const res=await saveDataJs(js);
+  DIRTY=false;$('#dirty').style.display='none';lockStatus();
+  alert(res.join('\n'));return res}
+// ---- 寫入目的地：電腦檔案（File System Access）、GitHub（API）、都沒有就下載 ----
+const HDB={open(){return new Promise((ok,no)=>{const r=indexedDB.open('poya-file-handle',1);r.onupgradeneeded=()=>r.result.createObjectStore('h');r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})},
+  async get(){try{const db=await this.open();return await new Promise(ok=>{const q=db.transaction('h').objectStore('h').get('data');q.onsuccess=()=>ok(q.result);q.onerror=()=>ok(null)})}catch(_){return null}},
+  async set(v){const db=await this.open();return new Promise(ok=>{const t=db.transaction('h','readwrite');v?t.objectStore('h').put(v,'data'):t.objectStore('h').delete('data');t.oncomplete=ok;t.onerror=ok})}};
+let FSH=null;
+async function fsPerm(){if(!FSH)return false;try{if((await FSH.queryPermission({mode:'readwrite'}))==='granted')return true;return (await FSH.requestPermission({mode:'readwrite'}))==='granted'}catch(_){return false}}
+function ghCfg(){try{return JSON.parse(localStorage.getItem('poya-gh')||'null')}catch(_){return null}}
+async function ghApi(cfg,path,opt={}){const r=await fetch('https://api.github.com/repos/'+cfg.owner+'/'+cfg.repo+path,{...opt,headers:{Authorization:'Bearer '+cfg.token,Accept:'application/vnd.github+json','Content-Type':'application/json'}});
+  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error((j.message||('HTTP '+r.status)));return j}
+async function ghWrite(cfg,text,msg){
+  const ref=await ghApi(cfg,'/git/ref/heads/'+cfg.branch);const base=ref.object.sha;
+  const cm=await ghApi(cfg,'/git/commits/'+base);
+  const blob=await ghApi(cfg,'/git/blobs',{method:'POST',body:JSON.stringify({content:b64(new TextEncoder().encode(text)),encoding:'base64'})});
+  const tree=await ghApi(cfg,'/git/trees',{method:'POST',body:JSON.stringify({base_tree:cm.tree.sha,tree:[{path:cfg.path,mode:'100644',type:'blob',sha:blob.sha}]})});
+  const nc=await ghApi(cfg,'/git/commits',{method:'POST',body:JSON.stringify({message:msg,tree:tree.sha,parents:[base]})});
+  await ghApi(cfg,'/git/refs/heads/'+cfg.branch,{method:'PATCH',body:JSON.stringify({sha:nc.sha})})}
+async function saveDataJs(js){
+  const out=[];let done=false;
+  if(FSH){if(await fsPerm()){try{const w=await FSH.createWritable();await w.write(js);await w.close();out.push('✅ 已直接覆寫電腦上的 '+FSH.name);done=true}catch(e){out.push('❌ 電腦檔案寫入失敗：'+e.message)}}else out.push('⚠️ 沒有取得電腦檔案的寫入權限')}
+  const cfg=ghCfg();
+  if(cfg&&cfg.token){toast('上傳到 GitHub 中…',20000);try{await ghWrite(cfg,js,'更新商品查詢資料檔 '+new Date().toLocaleString('zh-TW'));out.push('✅ 已更新 GitHub 上的 '+cfg.path+'（約 1～2 分鐘後網址版生效）');done=true}catch(e){out.push('❌ GitHub 更新失敗：'+e.message)}}
+  if(!done){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([js],{type:'text/javascript'}));a.download='poya-data.js';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    out.push('⬇️ 已下載 poya-data.js，請用它取代資料夾／GitHub 上的舊檔')}
+  return out}
+function fsStatus(){$('#fs-status').textContent=!('showOpenFilePicker' in window)?'這個瀏覽器不支援（iPhone 請用下面的 GitHub）':(FSH?'已連結：'+FSH.name:'尚未連結')}
+function ghStatus(){const c=ghCfg();$('#gh-owner').value=c?.owner||'xdea2200';$('#gh-repo').value=c?.repo||'poya-tool';$('#gh-branch').value=c?.branch||'main';$('#gh-path').value=c?.path||'search/poya-data.js';$('#gh-token').value=c?.token||'';
+  $('#gh-status').textContent=c&&c.token?'已設定':'尚未設定'}
+$('#fs-link').onclick=async()=>{if(!('showOpenFilePicker' in window)){toast('這個瀏覽器不支援，請用電腦版 Chrome / Edge',4000);return}
+  try{const [h]=await window.showOpenFilePicker({types:[{description:'poya-data.js',accept:{'text/javascript':['.js']}}],multiple:false});
+    if(h.name!=='poya-data.js'&&!confirm('選的檔案叫「'+h.name+'」，確定要用它當資料檔嗎？'))return;
+    if((await h.requestPermission({mode:'readwrite'}))!=='granted'){toast('沒有取得寫入權限');return}
+    FSH=h;await HDB.set(h);fsStatus();toast('已連結，之後會直接覆寫這個檔案')}catch(e){if(e.name!=='AbortError')toast('連結失敗：'+e.message,4000)}};
+$('#fs-unlink').onclick=async()=>{FSH=null;await HDB.set(null);fsStatus();toast('已取消連結')};
+$('#gh-save').onclick=()=>{const c={owner:$('#gh-owner').value.trim()||'xdea2200',repo:$('#gh-repo').value.trim()||'poya-tool',branch:$('#gh-branch').value.trim()||'main',path:$('#gh-path').value.trim()||'search/poya-data.js',token:$('#gh-token').value.trim()};
+  try{localStorage.setItem('poya-gh',JSON.stringify(c))}catch(_){}ghStatus();toast(c.token?'GitHub 設定已儲存':'沒有填權杖，不會寫入 GitHub')};
+$('#gh-clear').onclick=()=>{try{localStorage.removeItem('poya-gh')}catch(_){}ghStatus();toast('已清除 GitHub 設定')};
+$('#gh-test').onclick=async()=>{const c=ghCfg();if(!c||!c.token){toast('請先填權杖並儲存');return}$('#gh-status').textContent='測試中…';
+  try{const r=await ghApi(c,'');$('#gh-status').textContent=r.permissions&&r.permissions.push?'✅ 連線成功，可以寫入':'⚠️ 連得上但沒有寫入權限'}catch(e){$('#gh-status').textContent='❌ '+e.message}};
+HDB.get().then(h=>{FSH=h||null});
+async function askNewPw(){const pw=prompt('輸入新密碼（至少 4 個字，建議 10 個字以上、英數混合）');if(pw==null)return null;
+  if(pw.length<4){toast('密碼至少 4 個字');return null}
+  if(prompt('再輸入一次新密碼確認')!==pw){toast('兩次密碼不一樣，已取消');return null}return pw}
+$('#pw-lock').onclick=async()=>{await fsPerm();
+  if(!MASTER&&!PROMOS.length&&!CATS){toast('目前沒有資料');return}
+  if(LOCKED){const pw=prompt('輸入密碼以解除上鎖');if(pw==null)return;if(!(await verifyPw(pw))){toast('密碼不對',3500);return}
+    LOCKED=false;try{localStorage.removeItem('poya-pw')}catch(_){}
+    await exportDataFile();return}
+  let pw;
+  if(PWH){pw=prompt('輸入密碼上鎖（上鎖後打開網頁要輸入這個密碼）');if(pw==null)return;if(!(await verifyPw(pw))){toast('密碼不對',3500);return}}
+  else{pw=await askNewPw();if(pw==null)return;PWH=await makePwh(pw)}
+  DATA_PW=pw;LOCKED=true;await exportDataFile()};
+$('#pw-change').onclick=async()=>{await fsPerm();
+  if(!MASTER&&!PROMOS.length&&!CATS){toast('目前沒有資料');return}
+  if(PWH||LOCKED){const old=prompt('請輸入目前的密碼');if(old==null)return;if(!(await verifyPw(old))){toast('目前的密碼不對',3500);return}}
+  const pw=await askNewPw();if(pw==null)return;
+  PWH=await makePwh(pw);DATA_PW=pw;
+  await exportDataFile();
+  try{if(localStorage.getItem('poya-pw')!=null)localStorage.setItem('poya-pw',pw)}catch(_){}
+  alert(LOCKED?'密碼已更改。其他裝置下次打開時要輸入新密碼。':'密碼已更改（目前未上鎖，按「🔒 上鎖」時要用新密碼）。')};
+$('#pw-forget').onclick=()=>{try{localStorage.removeItem('poya-pw')}catch(_){}toast('已清除，下次打開會再問密碼')};
 $('#bk-import').onclick=()=>$('#bk-file').click();
 $('#bk-file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
   try{const buf=await f.arrayBuffer();let u=new Uint8Array(buf);
@@ -680,10 +770,9 @@ $('#bk-file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(
       try{u=await decryptPack(u,pw)}catch(_){toast('密碼錯誤，無法開啟資料包',3500);return}}
     if(!confirm('用這個資料包取代目前所有資料與設定？'))return;
     const txt=(u[0]===0x1f&&u[1]===0x8b)?await gunzipText(u):new TextDecoder().decode(u);
-    const d=JSON.parse(txt);await DB.clear();S={...S,...d.settings};MASTER=d.master;CATS=d.cats;PROMOS=d.promos||[];TRASH=[];
-    await saveS();if(MASTER)await DB.set('master',MASTER);if(CATS)await DB.set('cats',CATS);for(const p of PROMOS)await DB.set('promo:'+p.period,p);await DB.set('inited',1);
+    const d=JSON.parse(txt);MASTER=d.master;CATS=d.cats;PROMOS=d.promos||[];markDirty();
     applyS();rebuild();renderSettings();toast('還原完成')}catch(err){toast('備份檔讀取失敗：'+err.message,4000)}};
-$('#bk-reset').onclick=async()=>{if(!confirm('清除所有匯入的資料與設定，回到內建資料？'))return;await DB.clear();location.reload()};
+
 
 // ---------- barcode scanner ----------
 let QR=null,scanTarget='m',scanning=false;
@@ -776,29 +865,33 @@ $('#scan-go').onclick=async()=>{const v=$('#scan-manual').value.trim();if(!v)ret
 $('#scan-manual').addEventListener('keydown',e=>{if(e.key==='Enter')$('#scan-go').click()});
 
 // ---------- boot ----------
-async function loadSeed(){
-  const b64=$('#seed').textContent.trim();if(!b64||b64==='__SEED__')return null;
-  setLoad('第一次開啟，正在解壓內建資料…');
-  const bin=atob(b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
-  return JSON.parse(await gunzipText(u));
-}
+function askPw(msg){return new Promise(ok=>{const L=$('#loading');L.innerHTML=`<div style="max-width:320px;width:90%;text-align:center"><div style="font-size:40px">🔒</div><h2 style="margin:6px 0;font-size:18px;color:var(--ink)">寶雅POYA · 商品查詢</h2>
+  <div style="margin-bottom:10px">${esc(msg)}</div><input id="pw-in" type="password" style="width:100%;padding:10px;font-size:16px;border:1.5px solid var(--line);border-radius:10px" placeholder="資料檔密碼" autocomplete="current-password">
+  <label style="display:flex;gap:6px;justify-content:center;margin:10px 0;font-size:14px"><input type="checkbox" id="pw-rem">這台裝置記住密碼</label><button class="btn pri" id="pw-ok" style="width:100%;padding:10px">打開</button></div>`;
+  const go_=()=>ok({pw:$('#pw-in').value,rem:$('#pw-rem').checked});$('#pw-ok').onclick=go_;$('#pw-in').onkeydown=e=>{if(e.key==='Enter')go_()};setTimeout(()=>$('#pw-in').focus(),50)})}
+async function loadDataFile(){
+  setLoad('讀取資料檔 poya-data.js…');
+  try{await loadScript('poya-data.js')}catch(_){}
+  const D=window.POYA_DATA;if(!D)return false;
+  let u=unb64(D.b64||'');
+  if(D.enc){let pw=null;try{pw=localStorage.getItem('poya-pw')}catch(_){}let msg='請輸入資料檔密碼';
+    for(;;){if(pw){try{const x=await decryptPack(u,pw);u=x;DATA_PW=pw;break}catch(_){try{localStorage.removeItem('poya-pw')}catch(__){}msg='密碼錯誤，請再輸入一次'}}
+      const r=await askPw(msg);pw=r.pw;if(r.rem){try{localStorage.setItem('poya-pw',pw)}catch(_){}}
+      $('#loading').innerHTML='<div class="spin"></div><div id="loadmsg">解密中…</div>'}
+    if(!DATA_PW)return false}
+  LOCKED=!!D.enc;PWH=D.pwh||null;if(LOCKED&&!PWH)PWH=await makePwh(DATA_PW);
+  setLoad('解壓資料中…');const d=JSON.parse(await gunzipText(u));
+  MASTER=d.master||null;CATS=d.cats||null;PROMOS=d.promos||[];return true}
 (async()=>{
   try{
-    await DB.open();
-    const inited=await DB.get('inited');
-    if(!inited){const seed=await loadSeed();
-      if(seed){setLoad('正在存入瀏覽器…');const now=0;
-        MASTER={...seed.master,at:now};CATS={...seed.cats,at:now};PROMOS=seed.promos.map(p=>({...p,at:now}));
-        await DB.set('master',MASTER);await DB.set('cats',CATS);for(const p of PROMOS)await DB.set('promo:'+p.period,p)}
-      await DB.set('inited',1)}
-    else{setLoad('載入資料中…');
-      S={...S,...(await DB.get('settings')||{})};MASTER=await DB.get('master')||null;CATS=await DB.get('cats')||null;TRASH=await DB.get('trash')||[];
-      const keys=await DB.keys();PROMOS=[];for(const k of keys)if(String(k).startsWith('promo:'))PROMOS.push(await DB.get(k))}
+    try{indexedDB.deleteDatabase('poya-search')}catch(_){}   // 清掉舊版存在瀏覽器裡的資料
+    try{S={...S,...JSON.parse(localStorage.getItem('poya-settings')||'{}')}}catch(_){}
+    const ok=await loadDataFile();
+    if(!ok)setTimeout(()=>toast('找不到資料檔 poya-data.js：請把它和網頁放在同一個資料夾，或到「設定」匯入 Excel／資料包',8000),300);
     await purgeTrash();applyS();setLoad('建立搜尋索引…');
     await new Promise(r=>setTimeout(r,10));rebuild();
   }catch(err){console.error(err);toast('資料載入失敗：'+err.message,6000)}
   $('#loading').style.display='none';go(S.start||'m');
-  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(_){}
   try{if(document.querySelector('link[rel=manifest]')&&'serviceWorker' in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('sw.js',{scope:'./'})}catch(_){}
 })();
 </script>
